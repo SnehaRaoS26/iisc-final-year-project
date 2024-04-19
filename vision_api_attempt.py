@@ -243,3 +243,66 @@ for image in ['img_292.jpg']:
 
 #########################################################################################################################################################
 
+########################################################## IOU Metric Comparison (Annotated vs Google Vision API) #######################################
+import math
+import json
+from shapely.geometry import Polygon
+import numpy as np
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Read annotations
+ann_json_file = open('/content/drive/MyDrive/FinalProject/data/google_images/google_ocr_result/ann_result/img176.json')
+ann = json.load(ann_json_file)
+text_ann = ann['responses'][0]['textAnnotations']
+
+sentences_list = (text_ann[0]['description']).split('\n')
+new_text_ann = []
+for sentence in sentences_list:
+  words_list = sentence.split(' ')
+  if len(words_list) > 1:
+    if [item for item in text_ann if (item.get('description') == words_list[0])]:
+      match_bbox_1 = [item for item in text_ann if (item.get('description') == words_list[0])][0]['boundingPoly']['vertices']
+    match_bbox_2 = [item for item in text_ann if item.get('description') == words_list[len(words_list) - 1]][0]['boundingPoly']['vertices']
+    new_sentence_bbox = {'description': sentence, 'vertices': [list(match_bbox_1[0].values()), list(match_bbox_2[1].values()), list(match_bbox_2[2].values()), list(match_bbox_1[3].values())]}
+    new_text_ann.append(new_sentence_bbox)
+unique_new_ann = {each['description'] : each for each in new_text_ann}.values()
+sentence_ann_json = {'sentenceAnnotations': list(unique_new_ann)}
+
+with open("/content/drive/MyDrive/FinalProject/data/google_images/google_ocr_result/sentence_ann/img176.json", "w") as outfile:
+    json.dump(sentence_ann_json, outfile)
+
+from difflib import SequenceMatcher
+SequenceMatcher(None, 'BINGE'.lower(), 'Bing'.lower()).ratio()
+
+def bbox_iou(vertices_list1, vertices_list2):
+  polygon1 = Polygon(vertices_list1)
+  polygon2 = Polygon(vertices_list2)
+  area1 = polygon1.area
+  area2 = polygon2.area
+  area_inter = polygon1.intersection(polygon2).area
+  area_union = area1 + area2 - area_inter
+  iou = area_inter / area_union
+  return iou
+
+gt_ann_json_file = open('/content/drive/MyDrive/FinalProject/data/google_images/ann/img176.json')
+gt_ann = json.load(gt_ann_json_file)
+bbox_gt = gt_ann['objects']
+n_true = len(bbox_gt)
+
+pred_ann_json_file = open('/content/drive/MyDrive/FinalProject/data/google_images/google_ocr_result/sentence_ann/img176.json')
+pred_ann = json.load(pred_ann_json_file)
+bbox_pred = pred_ann['sentenceAnnotations']
+n_pred = len(bbox_pred)
+
+iou_matrix = np.zeros((n_true, n_pred))
+
+for i in range(len(bbox_gt)):
+  max_iou = {'iou': 0, 'box_gt': [], 'box_pred': []}
+  for j in range(len(bbox_pred)):
+    iou = bbox_iou(bbox_gt[i]['points']['exterior'], bbox_pred[j]['vertices'])
+    if iou > max_iou['iou']:
+      max_iou = {'iou': iou, 'box_gt': bbox_gt[i], 'box_pred': bbox_pred[j]}
+  iou_matrix[i, j] = max_iou['iou']
+
+print(iou_matrix)
